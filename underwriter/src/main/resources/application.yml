@@ -1,0 +1,50 @@
+logging:
+  level:
+    org.springframework.ai: DEBUG
+
+spring:
+  application:
+    name: underwriter
+
+  datasource:
+    url: jdbc:postgresql://localhost:5433/underwriter
+    username: postgres
+    password: root
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+
+  ai:
+    google:
+      genai:
+        # General/Chat Connection Properties
+        api-key: ${GEMINI_API_KEY}
+        project-id: gen-lang-client-0391828085
+
+        chat:
+          options:
+            model: gemini-3.5-flash
+            temperature: 0.0
+
+        # Dedicated Embedding Connection Properties (Required for Spring AI 2.0.0)
+        embedding:
+          api-key: ${GEMINI_API_KEY}
+          project-id: gen-lang-client-0391828085
+          text:
+            model: gemini-embedding-001
+#            options:
+#              output-dimensionality: 768
+    vectorstore:
+      pgvector:
+        initialize-schema: false
+        table-name: financial_document_embeddings
+        dimension: 3072
+        distance-type: COSINE_DISTANCE   # <-- Update this from 'cosine' to 'COSINE_DISTANCE'
+
+servlet:
+  multipart:
+    max-file-size: 10MB
+    max-request-size: 10MB
