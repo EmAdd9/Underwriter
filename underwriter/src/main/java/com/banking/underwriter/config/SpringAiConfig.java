@@ -16,4 +16,5 @@ public class SpringAiConfig {
                         "Never make independent credit approvals, guess missing values, or extrapolate data.")
                 .build();
     }
+
 }

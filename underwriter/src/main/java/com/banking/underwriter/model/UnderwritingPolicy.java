@@ -22,11 +22,4 @@ public class UnderwritingPolicy {
     private boolean allowBouncedCheques;
     private boolean isActive;
 
-    public UnderwritingPolicy(String baselineDefault, double v, double v1, boolean b, boolean b1) {
-        this.policyName = baselineDefault;
-        this.minNetIncome = v;
-        this.maxDtiRatio = v1;
-        this.allowBouncedCheques = b;
-        this.isActive = b1;
-    }
 }

@@ -3,6 +3,7 @@ package com.banking.underwriter.service;
 
 import com.banking.underwriter.model.*;
 import com.banking.underwriter.repository.UnderwritingPolicyRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
@@ -16,18 +17,12 @@ import java.util.List;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class UnderwritingEngineService {
 
     private final ChatClient chatClient;
     private final VectorStore vectorStore;
     private final UnderwritingPolicyRepository policyRepository;
-
-    public UnderwritingEngineService(ChatClient.Builder chatClientBuilder, VectorStore vectorStore,
-                                     UnderwritingPolicyRepository policyRepository) {
-        this.chatClient = chatClientBuilder.build();
-        this.vectorStore = vectorStore;
-        this.policyRepository = policyRepository;
-    }
 
     public UnderwritingDecision evaluateApplication(String applicationId) {
         log.info("Initiating dynamic underwriting calculation pipeline for Application ID: {}", applicationId);
@@ -51,7 +46,7 @@ public class UnderwritingEngineService {
         var retrievalAdvisor = QuestionAnswerAdvisor.builder(vectorStore)
                 .searchRequest(SearchRequest.builder()
                         .filterExpression(filterExpression)
-                        .similarityThreshold(0.70)
+                        .similarityThreshold(0.5)
                         .topK(6).build())
                 .build();
 
@@ -59,7 +54,7 @@ public class UnderwritingEngineService {
 
         // 3. Execute prompt evaluation with deterministic JSON Schema extraction mapping
         PolicyCriteriaExtraction criteria = this.chatClient.prompt()
-                .advisors(spec -> spec.param("retrievalAdvisor", retrievalAdvisor))
+                .advisors(retrievalAdvisor)
                 .user("Analyze the uploaded financial documents for this applicant. Extract " +
                         "total net income, sum up visible monthly obligations, check for document anomalies " +
                         "and flag if any bounced cheques exist.")
@@ -76,14 +71,54 @@ public class UnderwritingEngineService {
         // --- Rules Evaluation Core Engine ---
 
         // Rule A: Minimum Income Verification Check
-        if (criteria.calculatedNetMonthlyIncome() < activePolicy.getMinNetIncome()) {
-            log.warn("Policy Violation: Net monthly income {} falls below threshold of {}",
-                    criteria.calculatedNetMonthlyIncome(), activePolicy.getMinNetIncome());
-            causes.add("REJECTION_CAUSE: Income " + criteria.calculatedNetMonthlyIncome() +
-                    " is lower than the required threshold of " + activePolicy.getMinNetIncome());
-        }
+        minIncomeVerificationCheck(criteria, activePolicy, causes);
 
         // Rule B: Debt-to-Income (DTI) Assessment
+        assesDebtToIncome(criteria, activePolicy, causes);
+
+        // Rule C: Cheque Processing Deviations
+        fetchChequeDeviations(criteria, activePolicy, causes);
+
+        // Rule D: Integrity and Anomaly Assessment
+        assesIntegrityAndAnomaly(criteria, causes);
+
+        // Consolidated Status Rule Mapping Logic
+        finalState = consolidateStatusRuleMappingAndFinalState(causes, finalState, activePolicy);
+
+        log.info("Final automated underwriting pipeline assessment outcome: State={} with {} decision indicators.", finalState, causes.size());
+        return new UnderwritingDecision(finalState, causes);
+    }
+
+    private static ApplicationState consolidateStatusRuleMappingAndFinalState(List<String> causes, ApplicationState finalState, UnderwritingPolicy activePolicy) {
+        if (causes.stream().anyMatch(c -> c.startsWith("REJECTION_CAUSE"))) {
+            finalState = ApplicationState.REJECTED;
+        } else if (causes.stream().anyMatch(c -> c.startsWith("PENDING_CAUSE"))) {
+            finalState = ApplicationState.PENDING;
+        }
+
+        if (causes.isEmpty()) {
+            causes.add("APPROVAL_CAUSE: Auto-verification evaluation cleared fully against standard rule system: " +
+                    activePolicy.getPolicyName());
+        }
+        return finalState;
+    }
+
+    private static void assesIntegrityAndAnomaly(PolicyCriteriaExtraction criteria, List<String> causes) {
+        if (criteria.documentAnomalies() != null && !criteria.documentAnomalies().isBlank() &&
+                !criteria.documentAnomalies().equalsIgnoreCase("none")) {
+            log.warn("Data Integrity Exception: Structural inconsistencies surfaced: {}", criteria.documentAnomalies());
+            causes.add("PENDING_CAUSE: Document formatting variations reported: " + criteria.documentAnomalies());
+        }
+    }
+
+    private static void fetchChequeDeviations(PolicyCriteriaExtraction criteria, UnderwritingPolicy activePolicy, List<String> causes) {
+        if (criteria.hasRecentBouncedCheques() && !activePolicy.isAllowBouncedCheques()) {
+            log.info("Policy Hold Variant: Cheque bounce recorded on applicant records. Halting automated process routing.");
+            causes.add("PENDING_CAUSE: Bounced cheques detected on record. Requires physical review.");
+        }
+    }
+
+    private static void assesDebtToIncome(PolicyCriteriaExtraction criteria, UnderwritingPolicy activePolicy, List<String> causes) {
         double calculatedDti = 0.0;
         if (criteria.calculatedNetMonthlyIncome() > 0) {
             calculatedDti = (criteria.totalDetectedMonthlyObligations() / criteria.calculatedNetMonthlyIncome()) * 100;
@@ -95,33 +130,14 @@ public class UnderwritingEngineService {
             causes.add("REJECTION_CAUSE: Calculated DTI ratio of " + String.format("%.2f", calculatedDti) +
                     "% exceeds dynamic ceiling of " + activePolicy.getMaxDtiRatio() + "%");
         }
+    }
 
-        // Rule C: Cheque Processing Deviations
-        if (criteria.hasRecentBouncedCheques() && !activePolicy.isAllowBouncedCheques()) {
-            log.info("Policy Hold Variant: Cheque bounce recorded on applicant records. Halting automated process routing.");
-            causes.add("PENDING_CAUSE: Bounced cheques detected on record. Requires physical review.");
+    private static void minIncomeVerificationCheck(PolicyCriteriaExtraction criteria, UnderwritingPolicy activePolicy, List<String> causes) {
+        if (criteria.calculatedNetMonthlyIncome() < activePolicy.getMinNetIncome()) {
+            log.warn("Policy Violation: Net monthly income {} falls below threshold of {}",
+                    criteria.calculatedNetMonthlyIncome(), activePolicy.getMinNetIncome());
+            causes.add("REJECTION_CAUSE: Income " + criteria.calculatedNetMonthlyIncome() +
+                    " is lower than the required threshold of " + activePolicy.getMinNetIncome());
         }
-
-        // Rule D: Integrity and Anomaly Assessment
-        if (criteria.documentAnomalies() != null && !criteria.documentAnomalies().isBlank() &&
-                !criteria.documentAnomalies().equalsIgnoreCase("none")) {
-            log.warn("Data Integrity Exception: Structural inconsistencies surfaced: {}", criteria.documentAnomalies());
-            causes.add("PENDING_CAUSE: Document formatting variations reported: " + criteria.documentAnomalies());
-        }
-
-        // Consolidated Status Rule Mapping Logic
-        if (causes.stream().anyMatch(c -> c.startsWith("REJECTION_CAUSE"))) {
-            finalState = ApplicationState.REJECTED;
-        } else if (causes.stream().anyMatch(c -> c.startsWith("PENDING_CAUSE"))) {
-            finalState = ApplicationState.PENDING;
-        }
-
-        if (causes.isEmpty()) {
-            causes.add("APPROVAL_CAUSE: Auto-verification evaluation cleared fully against standard rule system: " +
-                    activePolicy.getPolicyName());
-        }
-
-        log.info("Final automated underwriting pipeline assessment outcome: State={} with {} decision indicators.", finalState, causes.size());
-        return new UnderwritingDecision(finalState, causes);
     }
 }

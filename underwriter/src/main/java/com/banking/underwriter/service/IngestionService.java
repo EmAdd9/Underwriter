@@ -8,6 +8,7 @@ import org.springframework.ai.reader.pdf.PagePdfDocumentReader;
 import org.springframework.ai.reader.tika.TikaDocumentReader;
 import org.springframework.ai.transformer.splitter.TokenTextSplitter;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -28,10 +29,10 @@ public class IngestionService {
     public void processAndStore(String applicationId, MultipartFile file) throws IOException {
         log.info("Starting ingestion processing for Application ID: {} | Filename: {}", applicationId, file.getOriginalFilename());
 
-        var resource = new InputStreamResource(file.getInputStream());
+//        var resource =;
         DocumentReader reader = "application/pdf".equals(file.getContentType())
-                ? new PagePdfDocumentReader(resource)
-                : new TikaDocumentReader(resource);
+                ? new PagePdfDocumentReader(new ByteArrayResource(file.getBytes()))
+                : new TikaDocumentReader(new ByteArrayResource(file.getBytes()));
 
         log.debug("Using reader implementation: {}", reader.getClass().getSimpleName());
         List<Document> rawDocuments = reader.read();

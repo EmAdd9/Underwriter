@@ -4,6 +4,7 @@ package com.banking.underwriter.controller;
 import com.banking.underwriter.model.UnderwritingDecision;
 import com.banking.underwriter.service.IngestionService;
 import com.banking.underwriter.service.UnderwritingEngineService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,15 +14,11 @@ import java.io.IOException;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/underwrite")
+@RequiredArgsConstructor
 public class UnderwriterController {
 
     private final IngestionService ingestionService;
     private final UnderwritingEngineService engineService;
-
-    public UnderwriterController(IngestionService ingestionService, UnderwritingEngineService engineService) {
-        this.ingestionService = ingestionService;
-        this.engineService = engineService;
-    }
 
     @PostMapping("/{applicationId}/upload")
     public ResponseEntity<String> uploadDocuments(
