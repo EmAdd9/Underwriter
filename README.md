@@ -1,71 +1,115 @@
-## ⚙️ Step-by-Step Setup, Build & Execution Guide
+🛡️ Automated Underwriting Compliance Engine
 
-Follow this comprehensive walkthrough to configure your environment variables, compile the microservice, and execute end-to-end API testing against the automated underwriting engine.
+An intelligent, RAG-driven underwriting and compliance system built with Spring Boot, Spring AI, Google GenAI / Gemini, and PostgreSQL (pgvector).
 
----
+Ingests unstructured financial documents, vectorizes them with isolated metadata scoping (applicationId), and evaluates them dynamically against strict credit risk policies.
 
-### Step 1: Set Up Your OpenAI Environment Variable
-The application retrieves your API secret safely from your operating system environment variables to authenticate with the Spring AI ecosystem. Execute the corresponding command for your specific terminal shell:
+🚀 Architectural Overview
 
-*   **Linux / macOS (Bash/Zsh):**
-    ```bash
-    export OPENAI_API_KEY="your-actual-api-key-here"
-    ```
-*   **Windows (Command Prompt / CMD):**
-    ```cmd
-    set OPENAI_API_KEY=your-actual-api-key-here
-    ```
-*   **Windows (PowerShell):**
-    ```powershell
-    $env:OPENAI_API_KEY="your-actual-api-key-here"
-    ```
+[ Unstructured PDF/TXT Bank Statement ]
+                   │
+                   ▼ (Multipart File Stream)
+         [ Ingestion Service ] 
+                   │
+                   ▼ (Token Text Splitter & Tika Reader)
+      [ Google GenAI Embedding Engine ]
+                   │
+                   ▼ (Vector Embedding - 3072 Dimensions)
+      [ PostgreSQL + pgvector (metadata: applicationId) ]
+                   │
+                   ▼ (Retrieval-Augmented Generation / RAG)
+    [ Underwriting Policy Decision Engine & LLM Analysis ]
+                   │
+     ┌─────────────┼─────────────┐
+     ▼             ▼             ▼
+ `APPROVED`    `REJECTED`     `PENDING` (Human Review)
 
----
 
-### Step 2: Build & Run the Application
-Navigate to your project root directory containing the `pom.xml` file and run standard Maven directives to compile the Java layers and spin up the embedded web application container:
+⚙️ Step-by-Step Setup, Build & Execution Guide
 
-```bash
-# Force resolution of submodules, clean target space, and compile
+Follow this walkthrough to configure your environment variables, spin up your database, compile the microservice, and execute end-to-end API testing.
+
+Step 1: Set Up Your API Environment Variable
+
+The application retrieves your API secret safely from your operating system environment variables to authenticate with the AI ecosystem. Execute the corresponding command for your terminal shell:
+
+Linux / macOS (Bash / Zsh):
+
+export SPRING_AI_GOOGLE_GENAI_API_KEY="your-actual-api-key-here"
+
+
+Windows (Command Prompt / CMD):
+
+set SPRING_AI_GOOGLE_GENAI_API_KEY=your-actual-api-key-here
+
+
+Windows (PowerShell):
+
+$env:SPRING_AI_GOOGLE_GENAI_API_KEY="your-actual-api-key-here"
+
+
+Step 2: Spin Up Infrastructure & Build the Application
+
+Start your PostgreSQL vector database using Docker Compose:
+
+docker-compose up -d
+
+
+Navigate to your project root directory containing the pom.xml file and compile:
+
 mvn clean compile
 
-# Launch the embedded Tomcat application server
+
+Launch the embedded Tomcat application server:
+
 mvn spring-boot:run
 
-# 🧪 Automated Underwriting System: QA & Testing Notes
 
-This guide provides testing notes, verification steps, and exact cURL commands with their corresponding responses to validate the end-to-end execution of the RAG-driven underwriting compliance pipeline.
+🧪 Testing & Experimentation Guide
 
----
+📋 Pre-Testing Notes & Requirements
 
-## 📋 Pre-Testing Notes & Requirements
+Stateful Sequencing: You must execute Phase 1 (Ingestion) before running Phase 2 (Decision Engine). If the Vector Store doesn't contain chunks matching your target applicationId, the RAG layer will fail to extract context, resulting in automatic policy holds.
 
-*   **Stateful Sequencing:** You must execute **Phase 1** (Ingestion) before running **Phase 2** (Decision Engine). If the Vector Store doesn't contain chunks matching your target `applicationId`, the RAG layer will fail to extract document context, resulting in automatic policy evaluation holds.
-*   **In-Memory Lifecycle:** The application initializes with an embedded H2 database. Restarting the Spring Boot application clears all database records and active policy profiles, reverting the environment back to the "Baseline Default" framework ruleset.
-*   **API Client Support:** The cURL commands below can be executed directly in your terminal or imported seamlessly into Postman or Insomnia by pasting the raw text into the request URL box.
+Database Backend: Ensure your PostgreSQL instance with the pgvector extension is active on port 5433.
 
----
+🔍 Interactive API Verification Steps
 
-## 🔍 Interactive API Verification Steps
+Phase 1: Ingest & Vectorize Customer Financial Files
 
-### Phase 1: Ingest & Vectorize Customer Financial Files
-This endpoint processes unstructured multi-page documents, generates text chunk vectors via OpenAI's embedding model, and binds an isolation metadata attribute (`applicationId`) to guarantee data privacy.
+This endpoint processes unstructured documents, generates text chunk vectors, and binds an isolation metadata attribute (applicationId) to guarantee data privacy.
 
-*   **HTTP Method:** `POST`
-*   **URL:** `http://localhost:8080/api/v1/underwrite/APP-78922/upload`
-*   **Content-Type:** `multipart/form-data`
+HTTP Method: POST
 
-#### cURL Request
-```bash
+URL: http://localhost:8080/api/v1/underwrite/APP-78922/upload
+
+Content-Type: multipart/form-data
+
 curl -X POST http://localhost:8080/api/v1/underwrite/APP-78922/upload \
   -H "Accept: text/plain" \
   -F "file=@/path/to/applicant_bank_statement.pdf"
 
-```bash
+
+Phase 2: Trigger Automated Underwriting Evaluation
+
+Once ingested, fetch the automated decision assessment for the specific application reference.
+
+HTTP Method: GET
+
+URL: http://localhost:8080/api/v1/underwrite/APP-78922/decision
+
 curl -X GET http://localhost:8080/api/v1/underwrite/APP-78922/decision \
   -H "Accept: application/json"
 
-```json
+
+📊 Expected Evaluation Responses & Outcomes
+
+Depending on the financial profile and document integrity of the uploaded statement, the engine will return one of the following states:
+
+1. Approved State (APPROVED)
+
+Returned when net monthly income clears thresholds, DTI is within acceptable limits, and no formatting anomalies exist.
+
 {
   "state": "APPROVED",
   "causes": [
@@ -73,7 +117,11 @@ curl -X GET http://localhost:8080/api/v1/underwrite/APP-78922/decision \
   ]
 }
 
-```json
+
+2. Rejected State (REJECTED)
+
+Returned when financial rules are breached (e.g., low income or excessive debt-to-income ratio).
+
 {
   "state": "REJECTED",
   "causes": [
@@ -82,7 +130,23 @@ curl -X GET http://localhost:8080/api/v1/underwrite/APP-78922/decision \
   ]
 }
 
-```bash
+
+3. Pending / Human Review State (PENDING)
+
+Returned when document anomalies, watermarks, text corruption, or summary-to-ledger mismatches are detected, routing the application for manual underwriter review.
+
+{
+  "state": "PENDING",
+  "causes": [
+    "PENDING_CAUSE: Document formatting variations reported: Ending balance mismatch: summary ending balance of $69,450.00 does not match final transaction ledger balance of $68,889.60 due to total debits summary omitting POS debit and utilities."
+  ]
+}
+
+
+⚙️ Administrative Policy Management
+
+You can dynamically configure custom risk profiles and thresholds via the admin policy endpoint:
+
 curl -X POST http://localhost:8080/api/v1/admin/policies \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
@@ -94,3 +158,7 @@ curl -X POST http://localhost:8080/api/v1/admin/policies \
     "active": true
   }'
 
+
+📄 License
+
+Distributed under the MIT License. See LICENSE for more information.
